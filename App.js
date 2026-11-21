@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect } from "react";
 
 import {
@@ -7,7 +8,9 @@ import {
   TextInput,
   TouchableOpacity,
   FlatList,
-  Alert
+  Alert,
+  StatusBar,
+  Keyboard
 } from "react-native";
 
 import { getNotes, storeNotes } from "./StorageService";
@@ -15,16 +18,20 @@ import NoteItem from "./NoteItem";
 import styles from "./styles";
 
 export default function App() {
-
   const [notes, setNotes] = useState([]);
   const [noteText, setNoteText] = useState("");
+  const [searchText, setSearchText] = useState("");
   const [editingId, setEditingId] = useState(null);
 
-  // READ: Load notes when the app starts
+  // READ: Load saved notes when the app first opens
   useEffect(() => {
     const loadSavedNotes = async () => {
-      const savedNotes = await getNotes();
-      setNotes(savedNotes);
+      try {
+        const savedNotes = await getNotes();
+        setNotes(savedNotes);
+      } catch (error) {
+        Alert.alert("Error", "Unable to load your notes.");
+      }
     };
 
     loadSavedNotes();
@@ -32,50 +39,47 @@ export default function App() {
 
   // CREATE and UPDATE
   const handleSave = async () => {
-
     if (noteText.trim() === "") {
-      Alert.alert("Warning", "Please enter a note.");
+      Alert.alert("Empty Note", "Please enter a note first.");
       return;
     }
 
     try {
-
       let updatedNotes;
 
       if (editingId !== null) {
-
         // UPDATE existing note
         updatedNotes = notes.map((note) =>
           note.id === editingId
             ? { ...note, text: noteText.trim() }
             : note
         );
-
       } else {
-
         // CREATE new note
         const newNote = {
           id: Date.now().toString(),
-          text: noteText.trim()
+          text: noteText.trim(),
+          date: new Date().toLocaleDateString()
         };
 
         updatedNotes = [...notes, newNote];
       }
 
+      // Save first, then update the screen
       await storeNotes(updatedNotes);
 
       setNotes(updatedNotes);
       setNoteText("");
       setEditingId(null);
+      Keyboard.dismiss();
 
     } catch (error) {
-      Alert.alert("Error", "Unable to save note.");
+      Alert.alert("Error", "Unable to save your note.");
     }
   };
 
-  // DELETE existing note
+  // DELETE
   const handleDelete = async (id) => {
-
     try {
       const updatedNotes = notes.filter(
         (note) => note.id !== id
@@ -84,65 +88,116 @@ export default function App() {
       await storeNotes(updatedNotes);
       setNotes(updatedNotes);
 
+      if (editingId === id) {
+        setEditingId(null);
+        setNoteText("");
+      }
     } catch (error) {
-      Alert.alert("Error", "Unable to delete note.");
+      Alert.alert("Error", "Unable to delete your note.");
     }
   };
 
-  // Select a note for editing
+  // EDIT
   const handleEdit = (item) => {
     setNoteText(item.text);
     setEditingId(item.id);
   };
 
-  // Cancel editing
+  // CANCEL EDITING
   const handleCancel = () => {
     setNoteText("");
     setEditingId(null);
+    Keyboard.dismiss();
   };
+
+  // SEARCH
+  const filteredNotes = notes.filter((note) =>
+    note.text.toLowerCase().includes(searchText.toLowerCase())
+  );
 
   return (
     <View style={styles.container}>
-
-      <Text style={styles.title}>
-        My Notes App
-      </Text>
-
-      <Text style={styles.subtitle}>
-        Keep your important notes organized.
-      </Text>
-
-      <TextInput
-        style={styles.input}
-        placeholder="Enter your note..."
-        value={noteText}
-        onChangeText={setNoteText}
-        multiline
+      <StatusBar
+        backgroundColor="#F8F7FC"
+        barStyle="dark-content"
       />
 
-      <TouchableOpacity
-        style={styles.addButton}
-        onPress={handleSave}
-      >
-        <Text style={styles.buttonText}>
-          {editingId !== null ? "Update Note" : "Add Note"}
+      {/* HEADER */}
+      <View style={styles.header}>
+        <Text style={styles.greeting}>
+          YOUR PERSONAL SPACE
         </Text>
-      </TouchableOpacity>
 
-      {editingId !== null && (
-        <TouchableOpacity onPress={handleCancel}>
-          <Text style={styles.cancelText}>
-            Cancel Editing
+        <Text style={styles.title}>
+          My Notes
+        </Text>
+
+        <Text style={styles.subtitle}>
+          Keep your thoughts organized, one note at a time.
+        </Text>
+      </View>
+
+      {/* SEARCH */}
+      <View style={styles.searchContainer}>
+        <Text style={styles.searchIcon}>⌕</Text>
+
+        <TextInput
+          style={styles.searchInput}
+          placeholder="Search your notes..."
+          placeholderTextColor="#A5A0B5"
+          value={searchText}
+          onChangeText={setSearchText}
+        />
+      </View>
+
+      {/* NOTE INPUT */}
+      <View style={styles.inputCard}>
+        <Text style={styles.inputLabel}>
+          {editingId !== null ? "EDIT YOUR NOTE" : "NEW NOTE"}
+        </Text>
+
+        <TextInput
+          style={styles.input}
+          placeholder="What's on your mind today?"
+          placeholderTextColor="#A5A0B5"
+          value={noteText}
+          onChangeText={setNoteText}
+          multiline
+        />
+
+        <TouchableOpacity
+          style={styles.addButton}
+          onPress={handleSave}
+          activeOpacity={0.8}
+        >
+          <Text style={styles.buttonText}>
+            {editingId !== null ? "✓  Save Changes" : "+  Add Note"}
           </Text>
         </TouchableOpacity>
-      )}
 
-      <Text style={styles.sectionTitle}>
-        My Saved Notes ({notes.length})
-      </Text>
+        {editingId !== null && (
+          <TouchableOpacity onPress={handleCancel}>
+            <Text style={styles.cancelText}>
+              Cancel Editing
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
 
+      {/* NOTES HEADER */}
+      <View style={styles.sectionHeader}>
+        <Text style={styles.sectionTitle}>
+          My Notes
+        </Text>
+
+        <Text style={styles.noteCount}>
+          {notes.length} {notes.length === 1 ? "NOTE" : "NOTES"}
+        </Text>
+      </View>
+
+      {/* NOTES LIST */}
       <FlatList
-        data={notes}
+        data={filteredNotes}
         keyExtractor={(item) => item.id}
         renderItem={({ item }) => (
           <NoteItem
@@ -151,14 +206,27 @@ export default function App() {
             onDelete={handleDelete}
           />
         )}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={styles.listContent}
         ListEmptyComponent={
-          <Text style={styles.emptyText}>
-            No notes yet. Add your first note!
-          </Text>
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>📝</Text>
+
+            <Text style={styles.emptyTitle}>
+              {searchText
+                ? "No notes found"
+                : "Nothing here yet"}
+            </Text>
+
+            <Text style={styles.emptySubtitle}>
+              {searchText
+                ? "Try another search."
+                : "Add your first note and keep your thoughts here."}
+            </Text>
+          </View>
         }
       />
-
     </View>
   );
 }
-
